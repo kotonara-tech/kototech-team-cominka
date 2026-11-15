@@ -31,6 +31,21 @@ paths:
                 required: [sites]
                 properties:
                   sites: { type: array, items: { $ref: "#/components/schemas/Site" } }
+    post:
+      operationId: createSite
+      summary: 解体現場を追加する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteCreate" }
+      responses:
+        "201":
+          description: 追加した解体現場
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "400": { $ref: "#/components/responses/Error" }
   /api/appraisals:
     post:
       operationId: createAppraisal
@@ -181,8 +196,17 @@ components:
         id: { type: string }
         name: { type: string }
         area: { type: string, description: 市町村・地区 }
-        builtYear: { type: integer }
+        builtYear: { type: [integer, "null"], description: 建築年。不明なら null }
         kind: { type: string, description: 町家・農家住宅など }
+    SiteCreate:
+      type: object
+      required: [requestId, name, area, builtYear, kind]
+      properties:
+        requestId: { type: string }
+        name: { type: string, maxLength: 40 }
+        area: { type: string, maxLength: 40, description: 市町村・地区 }
+        builtYear: { type: [integer, "null"], minimum: 1600, description: 建築年（1600〜今年）。不明なら null }
+        kind: { type: string, maxLength: 20, description: 町家・農家住宅・商家・蔵など }
     AppraisalRequest:
       type: object
       required: [imageBase64, mediaType, reference, siteId]
@@ -287,8 +311,9 @@ components:
         createdAt: { type: string, format: date-time }
     Catalog:
       type: object
-      required: [materials, recipes, references, aiMode]
+      required: [materials, recipes, references, siteKinds, aiMode]
       properties:
+        siteKinds: { type: array, items: { type: string }, description: 建物の種類の候補 }
         aiMode: { type: string, enum: [auto, claude, demo], description: 鑑定器の動作モード }
         materials:
           type: array

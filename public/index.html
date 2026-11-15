@@ -22,7 +22,25 @@
     <section id="capture">
       <div class="panel">
         <div class="step-title"><span class="step-no">1</span><h2>解体現場</h2></div>
-        <select id="site"></select>
+        <div class="site-row">
+          <select id="site"></select>
+          <button class="btn ghost small" type="button" id="site-add-toggle">＋ 追加</button>
+        </div>
+        <form id="site-form" class="site-form" hidden>
+          <label class="field"><span>名称</span><input type="text" id="site-name" maxlength="40" required placeholder="例：高畑町の町家"></label>
+          <label class="field"><span>地域（市町村・地区）</span><input type="text" id="site-area" maxlength="40" required placeholder="例：奈良市高畑町"></label>
+          <div class="row-2">
+            <label class="field"><span>築年（西暦）</span><input type="number" id="site-year" min="1600" step="1" placeholder="例：1925"></label>
+            <label class="field"><span>建物の種類</span><input type="text" id="site-kind" maxlength="20" required list="site-kinds" placeholder="町家"></label>
+          </div>
+          <datalist id="site-kinds"></datalist>
+          <label class="check"><input type="checkbox" id="site-year-unknown">築年不明（石綿の判定は 2006 年以前として扱う）</label>
+          <div class="settings-actions">
+            <button class="btn ghost small" type="button" id="site-cancel">やめる</button>
+            <button class="btn small" type="submit">追加する</button>
+          </div>
+          <div class="error" id="site-error" hidden></div>
+        </form>
       </div>
 
       <div class="panel">

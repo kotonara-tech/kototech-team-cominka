@@ -5,7 +5,8 @@ import { judgeHazard, type AsbestosSurvey, type Hazard } from "./hazard.ts";
 import type { Category, Material } from "./materials.ts";
 import { fitsRecipe, suggestUses, type Recipe } from "./recipes.ts";
 
-export type Site = { id: string; name: string; area: string; builtYear: number; kind: string };
+/** builtYear は建築年。不明なら null */
+export type Site = { id: string; name: string; area: string; builtYear: number | null; kind: string };
 
 export type EstimateResult = Estimate & { uses: string[]; hazard: Hazard };
 
@@ -67,5 +68,6 @@ export function matchesQuery(listing: Listing, site: Site, query: ListingQuery):
 /** 来歴の一文：「1920年頃建築・奈良市ならまちの町家の梁」 */
 export function provenance(site: Site, part: string): string {
   const where = `${site.area}の${site.kind}`;
-  return `${site.builtYear}年頃建築・${where}${part ? `の${part}` : ""}`;
+  const year = site.builtYear === null ? "築年不明" : `${site.builtYear}年頃建築`;
+  return `${year}・${where}${part ? `の${part}` : ""}`;
 }

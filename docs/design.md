@@ -42,7 +42,7 @@ flowchart TB
   subgraph browser["利用者のブラウザ"]
     web["画面［HTML / ES Modules］<br/>出品画面・マーケット画面・設定"]
     app["アプリ本体［TypeScript を esbuild で 1 ファイル化］<br/>鑑定・見積・出品・検索・問い合わせ"]
-    idb[("IndexedDB<br/>出品（写真を含む）・問い合わせ")]
+    idb[("IndexedDB<br/>解体現場・出品（写真を含む）・問い合わせ")]
     ls[("localStorage<br/>Claude API キー")]
   end
   ai["Claude API［外部］"]
@@ -117,7 +117,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 ### 出品可否（domain/hazard）
 - 責務：材料と解体現場の築年・石綿調査の結果から、出品可否と注意事項を返す
 - 判定：
-  - 材料が石綿のおそれあり かつ 築年が 2006 年（9月の全面禁止）以前 → 調査結果が「不検出」なら可、「検出」なら不可、未調査なら不可（`blocked`、要分析調査）
+  - 材料が石綿のおそれあり かつ 築年が 2006 年（9月の全面禁止）以前または不明 → 調査結果が「不検出」なら可、「検出」なら不可、未調査なら不可（`blocked`、要分析調査）
   - 材料に塗装・防腐処理の注意がある → 可（`caution`、加工時の粉じん・焼却禁止を表示）
   - それ以外 → 可（`ok`）
 - 配置：`src/domain/hazard.ts`
@@ -131,6 +131,12 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 - 責務：写真と基準物・メモを鑑定器ポートに渡し、AI の推定に見積・用途案・出品可否を加えた「鑑定結果」を返す
 - ポート：`Appraiser.appraise({ imageBase64, mediaType, reference, memo, site }) → { ai, source }`
 - 配置：`src/application/appraise.ts`
+
+### 解体現場（application/sites）
+- 責務：解体現場の一覧と追加。入力は名称（40 文字以内）・地域（40 文字以内）・築年（1600 年〜今年、不明なら null）・建物の種類（20 文字以内）
+- 冪等性：追加は `requestId` を受け取り、同じ値なら最初の結果を返す
+- サンプルの現場（コード内の定数）と、利用者が追加した現場（保存先）を合わせて返す。サンプルの現場は変更しない
+- 配置：`src/application/sites.ts`、検査は `src/domain/site.ts`
 
 ### 出品・検索・問い合わせ（application/listings）
 - 責務：出品の作成（出品可否の判定を含む）・一覧・取得・検索・逆引き、問い合わせの作成
@@ -164,7 +170,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 - 配置：`src/interface/routes.ts`
 
 ### 画面（public/）
-- 出品画面 `index.html`：現場の選択 → 撮影 → 鑑定 → 確認・修正（見積を再計算）→ 出品
+- 出品画面 `index.html`：現場の選択（その場で追加できる）→ 撮影 → 鑑定 → 確認・修正（見積を再計算）→ 出品
 - マーケット画面 `market.html`：作りたいもの・種類・長さ・キーワードで検索、詳細、問い合わせ
 - 設定（両画面のヘッダーから開く）：API キーの保存・確認・削除、デモデータの初期化
 - 計算は画面に書かない。再計算は `POST /api/estimates` を呼ぶ
@@ -180,6 +186,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 | 鑑定 | POST | `/api/appraisals` | 写真を鑑定し、推定値と見積を返す（保存しない） |
 | 見積 | POST | `/api/estimates` | 寸法・材質・現場から見積と出品可否を返す |
 | 解体現場 | GET | `/api/sites` | 解体現場の一覧 |
+| 解体現場 | POST | `/api/sites` | 解体現場を追加する |
 | 出品 | POST | `/api/listings` | 出品する |
 | 出品 | GET | `/api/listings` | 検索（`q`・`category`・`minLength`・`recipe`） |
 | 出品 | GET | `/api/listings/{listing_id}` | 出品の詳細 |
@@ -200,7 +207,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 
 ### 冪等性・タイムアウト
 
-- `POST /api/listings`・`POST /api/listings/{id}/inquiries` は `requestId` を受け取り、同じ値なら最初の結果を返す
+- `POST /api/sites`・`POST /api/listings`・`POST /api/listings/{id}/inquiries` は `requestId` を受け取り、同じ値なら最初の結果を返す
 - 鑑定のタイムアウトは 60 秒（SDK の設定）。失敗したら手入力に切り替える
 
 ## 6. デプロイ構成

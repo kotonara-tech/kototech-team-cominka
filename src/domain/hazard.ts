@@ -15,8 +15,9 @@ export function isAsbestosSurvey(value: unknown): value is AsbestosSurvey {
   return value === "none" || value === "not_detected" || value === "detected";
 }
 
-export function judgeHazard(material: Material, builtYear: number, survey: AsbestosSurvey): Hazard {
-  const suspected = material.asbestosRisk && builtYear <= ASBESTOS_BAN_YEAR;
+/** 築年が不明（null）なら全面禁止より前の建物として判定する */
+export function judgeHazard(material: Material, builtYear: number | null, survey: AsbestosSurvey): Hazard {
+  const suspected = material.asbestosRisk && (builtYear === null || builtYear <= ASBESTOS_BAN_YEAR);
   if (suspected && survey === "detected") {
     return {
       level: "blocked",
@@ -27,7 +28,7 @@ export function judgeHazard(material: Material, builtYear: number, survey: Asbes
     return {
       level: "blocked",
       reasons: [
-        `${material.name}は${ASBESTOS_BAN_YEAR}年以前の製品に石綿を含むものがある。分析調査で「不検出」の結果がない限り出品できない`,
+        `${material.name}は${ASBESTOS_BAN_YEAR}年以前の製品に石綿を含むものがある${builtYear === null ? "（築年不明のため以前として扱う）" : ""}。分析調査で「不検出」の結果がない限り出品できない`,
       ],
     };
   }

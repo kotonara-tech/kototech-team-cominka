@@ -7,8 +7,61 @@ const state = { photo: null, startedAt: 0, suggested: 0, priceTouched: false, re
 
 mountSettings();
 const catalog = await api("/api/catalog");
-const { sites } = await api("/api/sites");
-$("site").innerHTML = sites.map((s) => `<option value="${s.id}">${esc(s.name)}（${s.builtYear}年頃・${esc(s.area)}）</option>`).join("");
+const siteLabel = (s) => `${esc(s.name)}（${s.builtYear === null ? "築年不明" : `${s.builtYear}年頃`}・${esc(s.area)}）`;
+async function loadSites(selectId) {
+  const { sites } = await api("/api/sites");
+  $("site").innerHTML = sites.map((s) => `<option value="${s.id}">${siteLabel(s)}</option>`).join("");
+  if (selectId) $("site").value = selectId;
+}
+await loadSites();
+$("site-kinds").innerHTML = catalog.siteKinds.map((k) => `<option value="${esc(k)}">`).join("");
+
+// 1. 解体現場の追加
+let siteRequestId = "";
+function toggleSiteForm(show) {
+  $("site-form").hidden = !show;
+  $("site-add-toggle").hidden = show;
+  $("site-error").hidden = true;
+  if (show) {
+    siteRequestId = requestId();
+    $("site-form").reset();
+    $("site-year").disabled = false;
+    $("site-name").focus();
+  }
+}
+$("site-add-toggle").addEventListener("click", () => toggleSiteForm(true));
+$("site-cancel").addEventListener("click", () => toggleSiteForm(false));
+$("site-year-unknown").addEventListener("change", (e) => {
+  $("site-year").disabled = e.target.checked;
+  if (e.target.checked) $("site-year").value = "";
+});
+$("site-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const unknown = $("site-year-unknown").checked;
+  if (!unknown && !$("site-year").value) {
+    $("site-error").textContent = "築年を入れるか、築年不明にチェックを入れる";
+    $("site-error").hidden = false;
+    return;
+  }
+  try {
+    const site = await api("/api/sites", {
+      method: "POST",
+      body: {
+        requestId: siteRequestId,
+        name: $("site-name").value,
+        area: $("site-area").value,
+        builtYear: unknown ? null : Number($("site-year").value),
+        kind: $("site-kind").value,
+      },
+    });
+    await loadSites(site.id);
+    toggleSiteForm(false);
+    if (!$("review").hidden) refreshEstimate();
+  } catch (e) {
+    $("site-error").textContent = e.message;
+    $("site-error").hidden = false;
+  }
+});
 {
   const groups = Object.entries(CATEGORY_NAMES).map(([cat, name]) => {
     const opts = catalog.materials.filter((m) => m.category === cat).map((m) => `<option value="${m.key}">${esc(m.name)}</option>`).join("");

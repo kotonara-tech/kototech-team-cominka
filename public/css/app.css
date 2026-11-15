@@ -242,3 +242,10 @@ dialog.settings { width: min(480px, 100% - 24px); }
 @media (max-width: 480px) {
   button.ai-badge { max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* 解体現場の追加 */
+.site-row { display: flex; gap: 8px; align-items: center; }
+.site-row select { flex: 1; min-width: 0; }
+.site-row .btn { flex: none; white-space: nowrap; }
+.site-form { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); margin: -4px 0 12px; }

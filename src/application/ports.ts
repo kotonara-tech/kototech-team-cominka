@@ -46,6 +46,8 @@ export interface Appraiser {
 export interface Store {
   listSites(): Site[];
   getSite(id: string): Site | undefined;
+  findSiteByRequest(requestId: string): Site | undefined;
+  saveSite(site: Site, requestId: string): void;
   listListings(): Listing[];
   getListing(id: string): Listing | undefined;
   findListingByRequest(requestId: string): Listing | undefined;

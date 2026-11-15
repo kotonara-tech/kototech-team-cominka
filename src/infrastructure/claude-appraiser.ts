@@ -95,7 +95,7 @@ export class ClaudeAppraiser implements Appraiser {
   async #request(input: AppraiseInput) {
     const userText = [
       `写っている基準物：${REFERENCE_NAMES[input.reference]}`,
-      `解体現場：${input.site.area}の${input.site.kind}（${input.site.builtYear}年頃建築）`,
+      `解体現場：${input.site.area}の${input.site.kind}（${input.site.builtYear === null ? "築年不明" : `${input.site.builtYear}年頃建築`}）`,
       input.memo ? `出品者のメモ：${input.memo}` : "",
       "この廃材を鑑定して登録してください。",
     ].filter(Boolean).join("\n");

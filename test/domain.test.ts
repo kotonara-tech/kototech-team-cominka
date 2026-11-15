@@ -5,6 +5,7 @@ import { judgeHazard } from "../src/domain/hazard.ts";
 import { evaluate, matchesQuery, provenance, type Site } from "../src/domain/listing.ts";
 import { findMaterial } from "../src/domain/materials.ts";
 import { findRecipe, fitsRecipe, suggestUses } from "../src/domain/recipes.ts";
+import { isValidBuiltYear } from "../src/domain/site.ts";
 import { seedData } from "../src/infrastructure/seed.ts";
 
 const m = (key: string) => findMaterial(key)!;
@@ -84,4 +85,20 @@ test("evaluate は見積・用途・出品可否をまとめる", () => {
   const r = evaluate(m("calcium_silicate"), newSite, { dimensions: beam, condition: "good", asbestosSurvey: "none" });
   assert.equal(r.hazard.level, "ok");
   assert.deepEqual(r, { ...estimate(m("calcium_silicate"), beam, "good"), uses: [], hazard: r.hazard });
+});
+
+test("D16: 築年不明の現場は 2006 年以前として判定し、来歴に築年不明と書く", () => {
+  assert.equal(judgeHazard(m("corrugated_slate"), null, "none").level, "blocked");
+  assert.match(judgeHazard(m("corrugated_slate"), null, "none").reasons[0], /築年不明/);
+  assert.equal(judgeHazard(m("sugi"), null, "none").level, "ok");
+  assert.equal(provenance({ ...oldSite, builtYear: null }, "梁"), "築年不明・奈良市ならまちの町家の梁");
+});
+
+test("D16: 築年は 1600 年〜今年の整数", () => {
+  assert.equal(isValidBuiltYear(1600, 2026), true);
+  assert.equal(isValidBuiltYear(2026, 2026), true);
+  assert.equal(isValidBuiltYear(1599, 2026), false);
+  assert.equal(isValidBuiltYear(2027, 2026), false);
+  assert.equal(isValidBuiltYear(1925.5, 2026), false);
+  assert.equal(isValidBuiltYear("1925", 2026), false);
 });

@@ -64,3 +64,35 @@ test("入力の誤りは 400、ないものは 404", async () => {
 test("catalog は鑑定器のモードを返す", async () => {
   assert.equal((await call("GET", "/api/catalog")).body.aiMode, "demo");
 });
+
+test("D16: 解体現場を追加し、その現場で出品できる", async () => {
+  const body = { requestId: "s1", name: "高畑町の町家", area: "奈良市高畑町", builtYear: null, kind: "町家" };
+  const created = await call("POST", "/api/sites", body);
+  assert.equal(created.status, 201);
+  assert.equal(created.body.builtYear, null);
+  // 同じ requestId なら同じ現場を返す
+  assert.equal((await call("POST", "/api/sites", body)).body.id, created.body.id);
+  const sites = (await call("GET", "/api/sites")).body.sites;
+  assert.equal(sites.filter((s: { name: string }) => s.name === "高畑町の町家").length, 1);
+
+  // 築年不明の現場では、スレートは出品できない
+  const slate = await call("POST", "/api/estimates", {
+    siteId: created.body.id, materialKey: "corrugated_slate", dimensions: { lengthMm: 1820, widthMm: 720, thicknessMm: 6 }, condition: "fair",
+  });
+  assert.equal(slate.body.hazard.level, "blocked");
+
+  const listing = await call("POST", "/api/listings", {
+    requestId: "r3", siteId: created.body.id, part: "柱", materialKey: "hinoki", dimensions: { lengthMm: 2700, widthMm: 120, thicknessMm: 120 },
+    condition: "good", title: "檜の柱", description: "通し柱", priceYen: 5000, imageBase64: PNG, mediaType: "image/png",
+  });
+  assert.equal(listing.status, 201);
+  assert.equal(listing.body.provenance, "築年不明・奈良市高畑町の町家の柱");
+});
+
+test("D16: 解体現場の入力の誤りは 400", async () => {
+  const base = { name: "蔵", area: "奈良市", kind: "蔵" };
+  assert.equal((await call("POST", "/api/sites", { ...base, requestId: "s2", builtYear: 1500 })).status, 400);
+  assert.equal((await call("POST", "/api/sites", { ...base, requestId: "s3", builtYear: 3000 })).status, 400);
+  assert.equal((await call("POST", "/api/sites", { ...base, requestId: "s4", builtYear: 1950, name: "   " })).status, 400);
+  assert.equal((await call("POST", "/api/sites", { requestId: "s5", name: "蔵", builtYear: 1950, kind: "蔵" })).status, 400);
+});

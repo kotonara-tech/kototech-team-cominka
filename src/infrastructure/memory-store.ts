@@ -12,6 +12,7 @@ export type StoreData = {
 };
 
 export type Change =
+  | { kind: "site"; site: Site; requestKey: string }
   | { kind: "listing"; listing: Listing; requestKey: string }
   | { kind: "inquiry"; inquiry: Inquiry; requestKey: string };
 
@@ -35,6 +36,16 @@ export class MemoryStore implements Store {
   }
   getListing(id: string) {
     return this.#data.listings.find((l) => l.id === id);
+  }
+  findSiteByRequest(requestId: string) {
+    const id = this.#data.requests[`site:${requestId}`];
+    return id ? this.getSite(id) : undefined;
+  }
+  saveSite(site: Site, requestId: string) {
+    const requestKey = `site:${requestId}`;
+    this.#data.sites.push(site);
+    this.#data.requests[requestKey] = site.id;
+    this.#persist({ kind: "site", site, requestKey });
   }
   findListingByRequest(requestId: string) {
     const id = this.#data.requests[`listing:${requestId}`];

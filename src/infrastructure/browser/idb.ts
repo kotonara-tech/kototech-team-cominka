@@ -1,11 +1,12 @@
 // IndexedDB への保存。起動時に全件を読み込み、MemoryStore の変更を書き戻す。
 
-import type { Inquiry, Listing } from "../../domain/listing.ts";
+import type { Inquiry, Listing, Site } from "../../domain/listing.ts";
 import { MemoryStore, type Change, type StoreData } from "../memory-store.ts";
 import { seedData } from "../seed.ts";
 
 const DB_NAME = "kozai-relay";
-const DB_VERSION = 1;
+// 2：利用者が追加した解体現場（sites）を保存する
+const DB_VERSION = 2;
 
 function promisify<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -16,18 +17,22 @@ function promisify<T>(req: IDBRequest<T>): Promise<T> {
 
 function open(): Promise<IDBDatabase> {
   const req = indexedDB.open(DB_NAME, DB_VERSION);
-  req.onupgradeneeded = () => {
+  req.onupgradeneeded = (e) => {
     const db = req.result;
-    db.createObjectStore("listings", { keyPath: "id" });
-    db.createObjectStore("inquiries", { keyPath: "id" });
-    db.createObjectStore("requests");
+    if (e.oldVersion < 1) {
+      db.createObjectStore("listings", { keyPath: "id" });
+      db.createObjectStore("inquiries", { keyPath: "id" });
+      db.createObjectStore("requests");
+    }
+    if (e.oldVersion < 2) db.createObjectStore("sites", { keyPath: "id" });
   };
   return promisify(req);
 }
 
-async function readAll(db: IDBDatabase): Promise<Omit<StoreData, "sites">> {
-  const tx = db.transaction(["listings", "inquiries", "requests"], "readonly");
-  const [listings, inquiries, keys, values] = await Promise.all([
+async function readAll(db: IDBDatabase): Promise<StoreData> {
+  const tx = db.transaction(["sites", "listings", "inquiries", "requests"], "readonly");
+  const [sites, listings, inquiries, keys, values] = await Promise.all([
+    promisify(tx.objectStore("sites").getAll() as IDBRequest<Site[]>),
     promisify(tx.objectStore("listings").getAll() as IDBRequest<Listing[]>),
     promisify(tx.objectStore("inquiries").getAll() as IDBRequest<Inquiry[]>),
     promisify(tx.objectStore("requests").getAllKeys()),
@@ -35,14 +40,17 @@ async function readAll(db: IDBDatabase): Promise<Omit<StoreData, "sites">> {
   ]);
   const requests: Record<string, string> = {};
   keys.forEach((k, i) => (requests[String(k)] = values[i]));
-  return { listings, inquiries, requests };
+  return { sites, listings, inquiries, requests };
 }
 
 function write(db: IDBDatabase, change: Change, onError: (e: unknown) => void) {
-  const store = change.kind === "listing" ? "listings" : "inquiries";
+  const [store, record] =
+    change.kind === "site" ? ["sites", change.site] as const
+    : change.kind === "listing" ? ["listings", change.listing] as const
+    : ["inquiries", change.inquiry] as const;
   const tx = db.transaction([store, "requests"], "readwrite");
-  tx.objectStore(store).put(change.kind === "listing" ? change.listing : change.inquiry);
-  tx.objectStore("requests").put(change.kind === "listing" ? change.listing.id : change.inquiry.id, change.requestKey);
+  tx.objectStore(store).put(record);
+  tx.objectStore("requests").put(record.id, change.requestKey);
   tx.onerror = () => onError(tx.error);
   tx.onabort = () => onError(tx.error);
 }
@@ -60,7 +68,8 @@ export async function openBrowserStore(onError: (e: unknown) => void): Promise<B
     await new Promise((r) => (tx.oncomplete = r));
     saved = { ...saved, listings: seed.listings };
   }
-  const store = new MemoryStore({ sites: seed.sites, ...saved }, (change) => write(db, change, onError));
+  // サンプルの現場はコードの定数、追加した現場は IndexedDB から読む
+  const store = new MemoryStore({ ...saved, sites: [...seed.sites, ...saved.sites] }, (change) => write(db, change, onError));
   return { store, reset: () => reset(db) };
 }
 

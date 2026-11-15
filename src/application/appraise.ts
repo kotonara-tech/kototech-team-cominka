@@ -3,6 +3,7 @@
 import { evaluate, type EstimateResult } from "../domain/listing.ts";
 import { findMaterial, MATERIALS } from "../domain/materials.ts";
 import { RECIPES, recipeNeeds } from "../domain/recipes.ts";
+import { SITE_KINDS } from "../domain/site.ts";
 import { notFound } from "./errors.ts";
 import { REFERENCE_NAMES, type AiAppraisal, type Appraiser, type AppraiserSource, type Store } from "./ports.ts";
 import * as v from "./validate.ts";
@@ -51,5 +52,6 @@ export function catalog() {
     materials: MATERIALS.map((m) => ({ key: m.key, name: m.name, category: m.category })),
     recipes: RECIPES.map((r) => ({ key: r.key, name: r.name, needs: recipeNeeds(r) })),
     references: Object.entries(REFERENCE_NAMES).map(([key, name]) => ({ key, name })),
+    siteKinds: SITE_KINDS,
   };
 }
