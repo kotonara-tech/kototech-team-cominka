@@ -73,7 +73,7 @@ h2 { font-size: 17px; }
 /* フォーム */
 label.field { display: block; margin-bottom: 12px; font-size: 13px; color: var(--ink-2); }
 label.field > span { display: block; margin-bottom: 4px; }
-input[type="text"], input[type="number"], input[type="search"], select, textarea {
+input[type="text"], input[type="number"], input[type="search"], input[type="password"], input[type="url"], select, textarea {
   width: 100%; font: inherit; font-size: 16px; color: var(--ink);
   padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
 }

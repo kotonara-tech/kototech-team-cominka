@@ -10,7 +10,7 @@
 古民家の解体で出る廃材を、写真 1 枚から出品データに変換し、DIY 利用者・アーティストが用途から探して問い合わせできるようにする。
 AI は写真から「見て分かること」（種類・材質候補・寸法・状態・文章）だけを推定し、重量・価格・CO2・出品可否は決まった表と計算式で求める。
 石綿含有のおそれがある建材は計算上の判定で出品を止める。
-GitHub Pages で公開し、ブラウザ内で完結させる（[ADR 0002](adr/0002-static-hosting-browser-only.md)）。
+GitHub Pages で公開し、ブラウザ内で完結させる（[ADR 0002](adr/0002-static-hosting-browser-only.md)）。鑑定に使う AI は Claude・Gemini・OpenAI から選ぶ（[ADR 0003](adr/0003-multiple-ai-providers.md)）。
 
 ## 2. やらないこと
 
@@ -43,14 +43,14 @@ flowchart TB
     web["画面［HTML / ES Modules］<br/>出品画面・マーケット画面・設定"]
     app["アプリ本体［TypeScript を esbuild で 1 ファイル化］<br/>鑑定・見積・出品・検索・問い合わせ"]
     idb[("IndexedDB<br/>解体現場・出品（写真を含む）・問い合わせ")]
-    ls[("localStorage<br/>Claude API キー")]
+    ls[("localStorage<br/>AI の種類・キー・モデル")]
   end
-  ai["Claude API［外部］"]
+  ai["Claude / Gemini / OpenAI API［外部］"]
   pages -->|HTTPS| web
   web -->|関数呼び出し（API と同じパス）| app
   app --> idb
   app --> ls
-  app -->|HTTPS（画像＋strict tool）| ai
+  app -->|HTTPS（画像＋JSON スキーマ）| ai
 ```
 
 ### L3 コンポーネントと層
@@ -144,12 +144,27 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 - 冪等性：作成は `requestId` を受け取り、同じ値なら最初の結果を返す
 - 配置：`src/application/listings.ts`
 
+### 鑑定の指示と出力の形（infrastructure/appraisal-spec）
+- 責務：3 つの AI で共有する指示文・利用者向けの文・出力の JSON スキーマ（材質は材料表のキーの enum）・出力の検査（`parseAppraisal`）
+- 配置：`src/infrastructure/appraisal-spec.ts`
+
 ### Claude 鑑定（infrastructure/claude-appraiser）
-- 責務：Claude API（`claude-opus-5-5`、effort `low`）に画像とメモを送り、strict tool `register_material` の入力として構造化結果を受け取る
-- クライアントは呼び出しのたびに取得する（設定画面でキーを変えたらすぐ反映する）
+- 責務：Claude API（既定 `claude-opus-5-5`、effort `low`）に画像とメモを送り、strict tool `register_material` の入力として構造化結果を受け取る
 - 拒否（`stop_reason: refusal`）・ツール未呼び出しは `APPRAISAL_FAILED`、認証エラーは `UNAVAILABLE`（キーの確認を促す）に変換する
 - サーバー側フォールバック（`fallbacks: "default"`）を有効にする
 - 配置：`src/infrastructure/claude-appraiser.ts`
+
+### Gemini 鑑定（infrastructure/gemini-appraiser）
+- 責務：`POST {v1beta}/models/{model}:generateContent`（キーは `x-goog-api-key` ヘッダー、既定 `gemini-4-hydrogen`）に `systemInstruction`・テキスト・`inlineData` の画像を送り、`generationConfig.responseMimeType: application/json` と `responseJsonSchema` で JSON を受け取る
+- `responseJsonSchema` が受け付けられない 400 のときは `responseSchema`（`additionalProperties` を除く）で 1 回だけ再送する
+- `promptFeedback.blockReason`・`finishReason` が `STOP` 以外は `APPRAISAL_FAILED`、`API_KEY_INVALID`・401・403 は `UNAVAILABLE`（キーの確認）
+- 配置：`src/infrastructure/gemini-appraiser.ts`
+
+### OpenAI 鑑定（infrastructure/openai-appraiser）
+- 責務：`POST {接続先}/v1/responses`（既定 `gpt-6-astra`）に `instructions`・`input_text`・`input_image`（data URL）を送り、`text.format`（`json_schema`・`strict: true`）で JSON を受け取る
+- 出力は `output[]` の `message` の `output_text` を読む。`refusal` パート・`status: incomplete` は `APPRAISAL_FAILED`
+- 通信自体が失敗した場合（ブラウザの CORS 拒否）は、中継の設定を促す `UNAVAILABLE` にする
+- 配置：`src/infrastructure/openai-appraiser.ts`、中継の例：`proxy/openai-relay.js`
 
 ### デモ用鑑定（infrastructure/mock-appraiser）
 - 責務：API キーが未設定のとき、メモのキーワード（障子・瓦・スレートなど）または既定値から決まった推定を返す
@@ -161,9 +176,11 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 - 写真は `data:` URL として出品に含める
 - 配置：`src/infrastructure/memory-store.ts`、`src/infrastructure/browser/idb.ts`、`src/infrastructure/seed.ts`
 
-### API キー保存（infrastructure/browser/api-key）
-- 責務：localStorage の `kozai-relay.anthropicApiKey` にキーを保存・取得・削除する。キーの確認（`models.retrieve`）を行う
-- 配置：`src/infrastructure/browser/api-key.ts`
+### AI の設定（infrastructure/browser/ai-settings, provider-appraiser）
+- 責務：localStorage の `kozai-relay.ai` に、選んだ AI・AI ごとのキー・モデル・OpenAI の接続先を保存する。旧形式の `kozai-relay.anthropicApiKey` は読み込み時に移す
+- キーの確認：Claude はモデル情報の取得、Gemini はモデル情報の取得、OpenAI は `/v1/responses` への空の POST（400 ならキーは有効で接続できる、通信失敗なら直接接続できない）。いずれも料金はかからない
+- `ProviderAppraiser`：呼び出しのたびに設定を読み、選んだ AI の鑑定器を使う。キーがなければデモ用鑑定
+- 配置：`src/infrastructure/browser/ai-settings.ts`、`src/infrastructure/browser/provider-appraiser.ts`
 
 ### ルーティング（interface/routes）
 - 責務：API のパスとメソッドをユースケースに対応づけ、`AppError` を API 契約のエラー本文と HTTP 相当のステータスに変換する
@@ -172,7 +189,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 ### 画面（public/）
 - 出品画面 `index.html`：現場の選択（その場で追加できる）→ 撮影 → 鑑定 → 確認・修正（見積を再計算）→ 出品
 - マーケット画面 `market.html`：作りたいもの・種類・長さ・キーワードで検索、詳細、問い合わせ
-- 設定（両画面のヘッダーから開く）：API キーの保存・確認・削除、デモデータの初期化
+- 設定（両画面のヘッダーから開く）：AI の種類の選択、キー・モデル（OpenAI は接続先も）の保存・確認・削除、デモデータの初期化
 - 計算は画面に書かない。再計算は `POST /api/estimates` を呼ぶ
 - 画像は送信前に長辺 1,568 px の JPEG に縮小する
 - パスはすべて相対パスにする（Pages は `/kozai/` 配下で配信される）
@@ -191,7 +208,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 | 出品 | GET | `/api/listings` | 検索（`q`・`category`・`minLength`・`recipe`） |
 | 出品 | GET | `/api/listings/{listing_id}` | 出品の詳細 |
 | 問い合わせ | POST | `/api/listings/{listing_id}/inquiries` | 購入希望・問い合わせを送る |
-| 補助 | GET | `/api/catalog` | 材料表・レシピ・基準物の一覧と鑑定器のモード |
+| 補助 | GET | `/api/catalog` | 材料表・レシピ・基準物・建物の種類の一覧と、使う AI（`claude`・`gemini`・`openai`・`demo`） |
 
 ### エラー方針
 
@@ -217,7 +234,7 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 | 静的ファイル | GitHub Pages（`main` への push で GitHub Actions がテスト・ビルド・配置） | — | 運用費がかからない。スマホから URL で開ける |
 | アプリ本体・保存 | 利用者のブラウザ | 端末ごと | サーバーを置かない |
 
-- 秘密情報の置き場所：Claude API キーは利用者のブラウザの localStorage。リポジトリ・ビルド成果物には含めない。評価スクリプト用のキーは `.env`（git の対象外）
+- 秘密情報の置き場所：AI の API キーは利用者のブラウザの localStorage。リポジトリ・ビルド成果物には含めない。評価スクリプト用のキーは `.env`（git の対象外）
 - バックアップ・停止の許容：デモ用。ブラウザのデータを消すとサンプルから作り直す
 - 費用の目安：鑑定 1 回あたり数円（利用者のキーに課金）
 
@@ -231,6 +248,8 @@ application は「鑑定器」「保存先」をポート（TypeScript の inter
 | AI 出力の形 | strict tool use（`tool_choice: auto` ＋指示） | 自由文を解析 | スキーマどおりの値を受け取れる。Opus 5.5 は強制ツール指定を受け付けない |
 | 公開方法 | GitHub Pages ＋ブラウザ内で完結 | Node.js サーバーを常時稼働 | 運用費がかからない。利用者のキーを使える。代わりに端末間でデータを共有できない（ADR 0002） |
 | API キーの置き場所 | 利用者のブラウザの localStorage | 運営側サーバーで保持 | 静的ホスティングで秘密情報を持てない |
+| 鑑定に使う AI | Claude・Gemini・OpenAI から選ぶ。出力の形は共通 | Claude だけ | 利用者が持つキーで使える。OpenAI はブラウザから直接呼べないため中継の URL を設定できるようにする（ADR 0003） |
+| Gemini・OpenAI の呼び出し | `fetch` で REST API | 各社の SDK | バンドルを大きくしない。使うのは 1 つのエンドポイントだけ |
 | キー未設定時 | デモ用鑑定に切り替える | 鑑定不可 | キーがなくても操作の流れを見せられる |
 
 ## 8. 未決事項

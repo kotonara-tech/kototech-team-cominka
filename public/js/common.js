@@ -52,31 +52,43 @@ export function hazardHtml(hazard) {
   return `<div class="notice ${hazard.level}"><b>${title}</b><ul>${hazard.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`;
 }
 
+export const PROVIDER_NAMES = { claude: "Claude", gemini: "Gemini", openai: "OpenAI" };
+
 const SETTINGS_HTML = `
 <dialog id="settings" class="settings">
   <form method="dialog" class="settings-body" id="settings-form">
     <h2>設定</h2>
-    <label class="field"><span>Claude API キー</span>
-      <input type="password" id="api-key" autocomplete="off" spellcheck="false" placeholder="sk-ant-...">
+    <div class="muted" style="margin-bottom:6px">鑑定に使う AI</div>
+    <div class="seg" id="provider-seg" style="margin-bottom:12px"></div>
+    <label class="field"><span id="key-label">API キー</span>
+      <input type="password" id="api-key" autocomplete="off" spellcheck="false">
     </label>
-    <p class="muted">キーはこの端末のブラウザ（localStorage）にだけ保存し、Claude API への送信にだけ使う。未設定ならデモ用の推定で動く。共有の端末では使い終わったら削除する。<a href="https://console.anthropic.com/" target="_blank" rel="noopener">Anthropic Console</a> でキーに利用上限を設定しておく。</p>
+    <label class="field"><span>モデル（空欄なら既定）</span>
+      <input type="text" id="api-model" list="model-list" autocomplete="off" spellcheck="false">
+      <datalist id="model-list"></datalist>
+    </label>
+    <label class="field" id="openai-base-field"><span>接続先 URL（中継を使う場合）</span>
+      <input type="url" id="openai-base" placeholder="https://api.openai.com" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="muted" id="openai-note">OpenAI はブラウザからの直接呼び出しを受け付けない。使う場合は中継（<a href="https://github.com/ohru131/kozai/blob/main/docs/openai-relay.md" target="_blank" rel="noopener">設置手順</a>）の URL を入れる。</p>
+    <p class="muted">キーはこの端末のブラウザ（localStorage）にだけ保存し、選んだ AI の API への送信にだけ使う。キーが未設定ならデモ用の推定で動く。共有の端末では使い終わったら削除する。<a id="console-link" target="_blank" rel="noopener">管理画面</a>でキーに利用上限を設定しておく。</p>
     <p class="muted" id="key-status"></p>
     <div class="settings-actions">
       <button class="btn small" type="button" id="key-save">保存して確認</button>
-      <button class="btn ghost small" type="button" id="key-clear">削除</button>
+      <button class="btn ghost small" type="button" id="key-clear">キーを削除</button>
     </div>
     <hr>
     <h3 style="font-size:15px">デモデータ</h3>
-    <p class="muted">出品・問い合わせはこのブラウザ（IndexedDB）に保存される。初期化するとサンプルの出品だけに戻る。</p>
+    <p class="muted">解体現場・出品・問い合わせはこのブラウザ（IndexedDB）に保存される。初期化するとサンプルだけに戻る。</p>
     <button class="btn ghost small" type="button" id="data-reset">デモデータを初期化</button>
     <div class="settings-actions" style="margin-top:16px"><button class="btn small" value="close">閉じる</button></div>
   </form>
 </dialog>`;
 
 function renderBadge(badge) {
-  const demo = !settings.getApiKey();
-  badge.textContent = demo ? "AI: デモ用推定（キー未設定）" : "AI: Claude";
-  badge.classList.toggle("demo", demo);
+  const mode = settings.activeMode(settings.load());
+  badge.textContent = mode === "demo" ? "AI: デモ用推定（キー未設定）" : `AI: ${PROVIDER_NAMES[mode]}`;
+  badge.classList.toggle("demo", mode === "demo");
 }
 
 /** ヘッダーに AI の状態と設定ボタンを置き、設定画面を用意する */
@@ -98,31 +110,59 @@ export function mountSettings() {
   const $ = (id) => document.getElementById(id);
   const dialog = $("settings");
   const status = (text) => ($("key-status").textContent = text);
+  $("provider-seg").innerHTML = settings.providers
+    .map((p) => `<label><input type="radio" name="provider" value="${p.key}">${p.name}</label>`)
+    .join("");
+
+  // 画面に表示している AI（保存するまでは選択中の AI は変わらない）
+  let shown = "claude";
+  function show(provider) {
+    const s = settings.load();
+    const info = settings.providers.find((p) => p.key === provider);
+    shown = provider;
+    document.querySelector(`input[name="provider"][value="${provider}"]`).checked = true;
+    $("key-label").textContent = `${info.name} の API キー`;
+    $("api-key").value = s.keys[provider];
+    $("api-model").value = s.models[provider];
+    $("api-model").placeholder = info.defaultModel;
+    $("model-list").innerHTML = info.models.map((m) => `<option value="${esc(m)}">`).join("");
+    $("openai-base").value = s.openaiBaseUrl;
+    $("openai-base-field").hidden = provider !== "openai";
+    $("openai-note").hidden = provider !== "openai";
+    $("console-link").href = info.consoleUrl;
+    status(s.keys[provider] ? `${info.name} のキーを保存済み。` : `${info.name} のキーは未設定。`);
+  }
   const open = () => {
-    $("api-key").value = settings.getApiKey();
-    status(settings.getApiKey() ? "キーを保存済み。" : "キーは未設定。");
+    show(settings.load().provider);
     dialog.showModal();
   };
   badge.addEventListener("click", open);
   gear.addEventListener("click", open);
+  $("provider-seg").addEventListener("change", (e) => show(e.target.value));
 
   $("key-save").addEventListener("click", async () => {
-    const key = $("api-key").value.trim();
-    if (!key) return status("キーを入力する。");
-    settings.setApiKey(key);
+    const s = settings.load();
+    s.provider = shown;
+    s.keys[shown] = $("api-key").value.trim();
+    s.models[shown] = $("api-model").value.trim();
+    if (shown === "openai") s.openaiBaseUrl = $("openai-base").value.trim();
+    settings.save(s);
     renderBadge(badge);
+    if (!s.keys[shown]) return status(`${PROVIDER_NAMES[shown]} を選んだ。キーが未設定のためデモ用の推定で動く。`);
     status("確認中…");
-    const r = await settings.verifyApiKey(key);
-    status(r.ok ? "保存した。キーは有効。" : `保存した。確認に失敗：${r.message}`);
+    const r = await settings.verify(s, shown);
+    status(r.ok ? `保存した。${r.message}。` : `保存した。確認に失敗：${r.message}`);
   });
   $("key-clear").addEventListener("click", () => {
-    settings.clearApiKey();
+    const s = settings.load();
+    s.keys[shown] = "";
+    settings.save(s);
     $("api-key").value = "";
     renderBadge(badge);
-    status("キーを削除した。デモ用の推定で動く。");
+    status(`${PROVIDER_NAMES[shown]} のキーを削除した。`);
   });
   $("data-reset").addEventListener("click", async () => {
-    if (!confirm("このブラウザに保存した出品・問い合わせを消して、サンプルの出品だけに戻す。")) return;
+    if (!confirm("このブラウザに保存した解体現場・出品・問い合わせを消して、サンプルだけに戻す。")) return;
     try {
       await settings.resetData();
       location.reload();

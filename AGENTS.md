@@ -12,6 +12,7 @@
 - 依存は内側へだけ：`src/domain` は他の層・外部 SDK を import しない。`src/application` は domain とポートの型だけを使う
 - 重量・価格・CO2・出品可否の計算は `src/domain` の純粋関数に置き、テストを付ける。画面（`public/`）に計算を書かない
 - AI に推定させるのは写真から見て分かること（種類・材質候補・寸法・状態・文章）だけ
+- AI ごとの差は各鑑定器（`*-appraiser.ts`）に閉じ込める。指示文・出力のスキーマ・検査は `appraisal-spec.ts` だけに書く
 - 材料の種類ごとの値（密度・単価・石綿のおそれ）は `src/domain/materials.ts` の表に集める。switch を散らさない
 - 1 ファイル 600 行・1 関数 150 行を超えない
 - 使われなくなったコードは同じ変更で消す
@@ -21,12 +22,13 @@
 src/
   domain/              … 材料表・見積・出品可否・用途（純粋関数）
   application/         … ユースケースとポート（Appraiser・Store）
-  infrastructure/      … Claude 鑑定・デモ用鑑定・MemoryStore・サンプルデータ
-    browser/           … IndexedDB 保存・API キー（localStorage）・キーで切り替える鑑定器
+  infrastructure/      … 鑑定の指示とスキーマ（appraisal-spec）・Claude/Gemini/OpenAI 鑑定・デモ用鑑定・MemoryStore・サンプルデータ
+    browser/           … IndexedDB 保存・AI の設定（localStorage）・設定で切り替える鑑定器
   interface/           … routes.ts（API のパス → ユースケース）
     browser/main.ts    … ブラウザ用の組み立て。esbuild で dist/js/app.js にまとめる
 public/                … 画面（index.html・market.html・js/・css/・img/）。パスは相対パスにする
 scripts/               … build.ts（ビルド・開発サーバー）・eval-photos.ts（寸法精度の評価）
+proxy/                 … OpenAI 用の中継の例（Cloudflare Workers）
 test/                  … node:test のテスト
 dist/                  … ビルド結果（GitHub Pages に配置）。git に入れない
 docs/                  … PRD・設計書・API 契約・ADR
@@ -37,7 +39,7 @@ docs/                  … PRD・設計書・API 契約・ADR
 - ビルド：`npm run build`（dist/ を作る）
 - テスト：`npm test`
 - 型チェック：`npm run typecheck`
-- 寸法精度の評価：`npm run eval -- eval/manifest.json`（キーは .env から読む）
+- 寸法精度の評価：`npm run eval -- eval/manifest.json`（AI とキーは .env の `AI_PROVIDER`・各社のキーから読む）
 - 公開：main に push すると GitHub Actions がテスト・ビルドして GitHub Pages に配置する
 
 ## 規約

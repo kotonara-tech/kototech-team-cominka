@@ -236,7 +236,7 @@ components:
       required: [ai, source, estimate]
       properties:
         ai: { $ref: "#/components/schemas/AiAppraisal" }
-        source: { type: string, enum: [claude, demo] }
+        source: { type: string, enum: [claude, gemini, openai, demo] }
         estimate: { $ref: "#/components/schemas/EstimateResult" }
     EstimateRequest:
       type: object
@@ -314,7 +314,7 @@ components:
       required: [materials, recipes, references, siteKinds, aiMode]
       properties:
         siteKinds: { type: array, items: { type: string }, description: 建物の種類の候補 }
-        aiMode: { type: string, enum: [auto, claude, demo], description: 鑑定器の動作モード }
+        aiMode: { type: string, enum: [claude, gemini, openai, demo], description: 鑑定に使う AI（キー未設定なら demo） }
         materials:
           type: array
           items:

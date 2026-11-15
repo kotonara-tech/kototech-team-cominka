@@ -37,7 +37,7 @@ export type AiAppraisal = {
   ideas: string[];
 };
 
-export type AppraiserSource = "claude" | "demo";
+export type AppraiserSource = "claude" | "gemini" | "openai" | "demo";
 
 export interface Appraiser {
   appraise(input: AppraiseInput): Promise<{ ai: AiAppraisal; source: AppraiserSource }>;

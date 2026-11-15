@@ -1,12 +1,17 @@
-// 寸法推定の精度評価：eval/manifest.json の写真を Claude で鑑定し、実寸との差を表にする。
-// 使い方：npm run eval -- [eval/manifest.json]（API キーは .env の ANTHROPIC_API_KEY から読む）
+// 寸法精度の評価：eval/manifest.json の写真を選んだ AI で鑑定し、実寸との差を表にする。
+// 使い方：npm run eval -- [eval/manifest.json]
+// AI は .env の AI_PROVIDER（claude・gemini・openai、既定 claude）、キーは ANTHROPIC_API_KEY・GEMINI_API_KEY・OPENAI_API_KEY、
+// モデルは AI_MODEL（空なら既定）から読む。
 // 画像は長辺 1568px 以下にしておく（scripts/shrink-photos.ps1）。
 
 import Anthropic from "@anthropic-ai/sdk";
 import fs from "node:fs";
 import path from "node:path";
 import { appraisePhoto } from "../src/application/appraise.ts";
-import { ClaudeAppraiser } from "../src/infrastructure/claude-appraiser.ts";
+import type { Appraiser } from "../src/application/ports.ts";
+import { ClaudeAppraiser, MODEL as CLAUDE_MODEL } from "../src/infrastructure/claude-appraiser.ts";
+import { GEMINI_MODEL, GeminiAppraiser } from "../src/infrastructure/gemini-appraiser.ts";
+import { OPENAI_BASE, OPENAI_MODEL, OpenAIAppraiser } from "../src/infrastructure/openai-appraiser.ts";
 import { MemoryStore } from "../src/infrastructure/memory-store.ts";
 import { seedData } from "../src/infrastructure/seed.ts";
 
@@ -18,7 +23,18 @@ const dir = path.dirname(manifestPath);
 const entries = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Entry[];
 
 const store = new MemoryStore({ ...seedData(), inquiries: [], requests: {} });
-const appraiser = new ClaudeAppraiser(new Anthropic({ timeout: 60_000, maxRetries: 1 }));
+const provider = process.env.AI_PROVIDER || "claude";
+const model = process.env.AI_MODEL || "";
+function selectAppraiser(): Appraiser {
+  if (provider === "claude") return new ClaudeAppraiser(new Anthropic({ timeout: 60_000, maxRetries: 1 }), model || CLAUDE_MODEL);
+  const key = process.env[provider === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY"];
+  if (!key) throw new Error(`${provider} の API キーが .env にない`);
+  if (provider === "gemini") return new GeminiAppraiser(key, model || GEMINI_MODEL);
+  if (provider === "openai") return new OpenAIAppraiser(key, model || OPENAI_MODEL, process.env.OPENAI_BASE_URL || OPENAI_BASE);
+  throw new Error(`AI_PROVIDER が不正: ${provider}`);
+}
+const appraiser = selectAppraiser();
+console.error(`AI: ${provider} ${model || "（既定のモデル）"}`);
 
 const MEDIA: Record<string, string> = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
 // AI は長い順に返すので、実寸も長い順に並べて比べる

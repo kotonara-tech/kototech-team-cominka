@@ -1,11 +1,10 @@
 // ブラウザ用の組み立て：IndexedDB の保存先・鑑定器・ルーティングをつなぎ、画面に関数として公開する。
 
-import { clearApiKey, getApiKey, setApiKey, verifyApiKey } from "../../infrastructure/browser/api-key.ts";
+import { activeMode, loadSettings, modelOf, PROVIDERS, saveSettings, verify } from "../../infrastructure/browser/ai-settings.ts";
 import { openBrowserStore } from "../../infrastructure/browser/idb.ts";
-import { KeyedAppraiser } from "../../infrastructure/browser/keyed-appraiser.ts";
+import { ProviderAppraiser } from "../../infrastructure/browser/provider-appraiser.ts";
 import { handle } from "../routes.ts";
 
-const appraiser = new KeyedAppraiser();
 function notice(text: string) {
   const el = document.createElement("div");
   el.className = "notice caution app-notice";
@@ -29,6 +28,7 @@ const { store, reset } = await openBrowserStore({
 });
 ui.blocked?.remove();
 
+const appraiser = new ProviderAppraiser();
 const deps = { store, appraiser, aiMode: () => appraiser.mode() };
 
 /** API と同じパスで呼ぶ。ステータスが 400 以上なら本文の error を返す */
@@ -37,9 +37,11 @@ export function request(method: string, path: string, body?: unknown) {
 }
 
 export const settings = {
-  getApiKey,
-  setApiKey,
-  clearApiKey,
-  verifyApiKey,
+  providers: PROVIDERS,
+  load: loadSettings,
+  save: saveSettings,
+  modelOf,
+  activeMode,
+  verify,
   resetData: reset,
 };

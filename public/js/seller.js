@@ -1,6 +1,6 @@
 // 出品画面：撮影 → 鑑定 → 確認・修正（見積はアプリ本体で再計算）→ 出品。
 
-import { api, CATEGORY_NAMES, esc, hazardHtml, kg, mountSettings, requestId, shrinkImage, yen } from "./common.js";
+import { api, CATEGORY_NAMES, esc, hazardHtml, kg, mountSettings, PROVIDER_NAMES, requestId, shrinkImage, yen } from "./common.js";
 
 const $ = (id) => document.getElementById(id);
 const state = { photo: null, startedAt: 0, suggested: 0, priceTouched: false, requestId: "", blocked: false };
@@ -116,7 +116,7 @@ function fillReview(result) {
   state.priceTouched = false;
   const ai = result?.ai;
   $("ai-source").textContent = result
-    ? result.source === "claude" ? "Claude が推定した値。違う箇所を直してから出品する。" : "デモ用の推定値（API キー未設定。右上の設定から登録できる）。違う箇所を直してから出品する。"
+    ? result.source === "demo" ? "デモ用の推定値（API キー未設定。右上の設定から登録できる）。違う箇所を直してから出品する。" : `${PROVIDER_NAMES[result.source]} が推定した値。違う箇所を直してから出品する。`
     : "鑑定できなかったため手入力する。";
   $("title").value = ai?.title ?? "";
   if (ai) $("material").value = ai.materialKey;
