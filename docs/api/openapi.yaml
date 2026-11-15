@@ -1,0 +1,336 @@
+openapi: 3.1.0
+info:
+  title: 古材リレー API
+  version: 0.1.0
+  description: >-
+    古民家の廃材を写真から鑑定し、出品・検索・問い合わせを行う API。
+    ネットワークは介さず、ブラウザ内で src/interface/routes.ts が同じパスを処理する（ADR 0002）。
+    ステータスは HTTP と同じ意味の数値で返す。
+paths:
+  /api/catalog:
+    get:
+      operationId: getCatalog
+      summary: 材料表・レシピ・基準物の一覧
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Catalog" }
+  /api/sites:
+    get:
+      operationId: listSites
+      summary: 解体現場の一覧
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sites]
+                properties:
+                  sites: { type: array, items: { $ref: "#/components/schemas/Site" } }
+  /api/appraisals:
+    post:
+      operationId: createAppraisal
+      summary: 写真を鑑定する（保存しない）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppraisalRequest" }
+      responses:
+        "200":
+          description: 鑑定結果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appraisal" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/estimates:
+    post:
+      operationId: createEstimate
+      summary: 寸法・材質・現場から見積と出品可否を返す
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateRequest" }
+      responses:
+        "200":
+          description: 見積
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/listings:
+    get:
+      operationId: listListings
+      summary: 出品を検索する
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: タイトル・説明・材質・地域の部分一致 }
+        - { name: category, in: query, schema: { $ref: "#/components/schemas/Category" } }
+        - { name: minLength, in: query, schema: { type: integer, minimum: 0 }, description: 長さの下限 mm }
+        - { name: recipe, in: query, schema: { type: string }, description: 作りたいもの（レシピの key） }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [listings]
+                properties:
+                  listings: { type: array, items: { $ref: "#/components/schemas/Listing" } }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createListing
+      summary: 出品する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListingCreate" }
+      responses:
+        "201":
+          description: 作成した出品
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/listings/{listing_id}:
+    get:
+      operationId: getListing
+      summary: 出品の詳細
+      parameters:
+        - { name: listing_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/listings/{listing_id}/inquiries:
+    post:
+      operationId: createInquiry
+      summary: 購入希望・問い合わせを送る
+      parameters:
+        - { name: listing_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InquiryCreate" }
+      responses:
+        "201":
+          description: 作成した問い合わせ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Inquiry" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: エラー
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_ARGUMENT, NOT_FOUND, FAILED_PRECONDITION, APPRAISAL_FAILED, UNAVAILABLE]
+            message: { type: string }
+    Category:
+      type: string
+      enum: [timber, fitting, metal, roof, glass, board, other]
+      description: 木材・建具・金物・屋根材・ガラス・成形板・その他
+    Condition:
+      type: string
+      enum: [good, fair, poor]
+    AsbestosSurvey:
+      type: string
+      enum: [none, not_detected, detected]
+      description: 石綿の分析調査（未調査・不検出・検出）
+    Dimensions:
+      type: object
+      required: [lengthMm, widthMm, thicknessMm]
+      properties:
+        lengthMm: { type: number, exclusiveMinimum: 0 }
+        widthMm: { type: number, exclusiveMinimum: 0 }
+        thicknessMm: { type: number, exclusiveMinimum: 0 }
+    Site:
+      type: object
+      required: [id, name, area, builtYear, kind]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        area: { type: string, description: 市町村・地区 }
+        builtYear: { type: integer }
+        kind: { type: string, description: 町家・農家住宅など }
+    AppraisalRequest:
+      type: object
+      required: [imageBase64, mediaType, reference, siteId]
+      properties:
+        imageBase64: { type: string, description: 長辺 1568px 以下の画像 }
+        mediaType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        reference: { type: string, enum: [a4, card, none] }
+        memo: { type: string, maxLength: 200 }
+        siteId: { type: string }
+    AiAppraisal:
+      type: object
+      required: [category, materialKey, materialCandidates, dimensions, dimensionBasis, condition, defects, features, title, description, ideas]
+      properties:
+        category: { $ref: "#/components/schemas/Category" }
+        materialKey: { type: string }
+        materialCandidates: { type: array, items: { type: string } }
+        dimensions: { $ref: "#/components/schemas/Dimensions" }
+        dimensionBasis: { type: string, description: 寸法推定の根拠 }
+        condition: { $ref: "#/components/schemas/Condition" }
+        defects: { type: array, items: { type: string } }
+        features: { type: array, items: { type: string } }
+        title: { type: string }
+        description: { type: string }
+        ideas: { type: array, items: { type: string } }
+    Appraisal:
+      type: object
+      required: [ai, source, estimate]
+      properties:
+        ai: { $ref: "#/components/schemas/AiAppraisal" }
+        source: { type: string, enum: [claude, demo] }
+        estimate: { $ref: "#/components/schemas/EstimateResult" }
+    EstimateRequest:
+      type: object
+      required: [materialKey, dimensions, condition, siteId]
+      properties:
+        materialKey: { type: string }
+        dimensions: { $ref: "#/components/schemas/Dimensions" }
+        condition: { $ref: "#/components/schemas/Condition" }
+        measuredWeightKg: { type: number, exclusiveMinimum: 0 }
+        siteId: { type: string }
+        asbestosSurvey: { $ref: "#/components/schemas/AsbestosSurvey" }
+    EstimateResult:
+      type: object
+      required: [volumeM3, weightKg, weightMinKg, weightMaxKg, weightSource, suggestedPriceYen, co2Kg, carry, uses, hazard]
+      properties:
+        volumeM3: { type: number }
+        weightKg: { type: number }
+        weightMinKg: { type: number }
+        weightMaxKg: { type: number }
+        weightSource: { type: string, enum: [estimated, measured] }
+        suggestedPriceYen: { type: integer }
+        co2Kg: { type: [number, "null"] }
+        carry: { type: string }
+        uses: { type: array, items: { type: string } }
+        hazard:
+          type: object
+          required: [level, reasons]
+          properties:
+            level: { type: string, enum: [ok, caution, blocked] }
+            reasons: { type: array, items: { type: string } }
+    ListingCreate:
+      type: object
+      required: [requestId, siteId, materialKey, dimensions, condition, title, description, priceYen, imageBase64, mediaType]
+      properties:
+        requestId: { type: string }
+        siteId: { type: string }
+        part: { type: string, description: 部位（梁・柱・床板など） }
+        materialKey: { type: string }
+        dimensions: { $ref: "#/components/schemas/Dimensions" }
+        condition: { $ref: "#/components/schemas/Condition" }
+        measuredWeightKg: { type: number, exclusiveMinimum: 0 }
+        asbestosSurvey: { $ref: "#/components/schemas/AsbestosSurvey" }
+        title: { type: string, maxLength: 60 }
+        description: { type: string, maxLength: 1000 }
+        features: { type: array, items: { type: string } }
+        ideas: { type: array, items: { type: string } }
+        priceYen: { type: integer, minimum: 0 }
+        imageBase64: { type: string }
+        mediaType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+    Listing:
+      type: object
+      required: [id, site, provenance, materialKey, materialName, category, dimensions, condition, asbestosSurvey, title, description, priceYen, imageUrl, estimate, inquiryCount, createdAt]
+      properties:
+        id: { type: string }
+        site: { $ref: "#/components/schemas/Site" }
+        provenance: { type: string, description: 来歴の一文（例「1920年頃建築・奈良市ならまちの町家の梁」） }
+        part: { type: string }
+        asbestosSurvey: { $ref: "#/components/schemas/AsbestosSurvey" }
+        materialKey: { type: string }
+        materialName: { type: string }
+        category: { $ref: "#/components/schemas/Category" }
+        dimensions: { $ref: "#/components/schemas/Dimensions" }
+        condition: { $ref: "#/components/schemas/Condition" }
+        title: { type: string }
+        description: { type: string }
+        features: { type: array, items: { type: string } }
+        ideas: { type: array, items: { type: string } }
+        priceYen: { type: integer }
+        imageUrl: { type: string }
+        estimate: { $ref: "#/components/schemas/EstimateResult" }
+        inquiryCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+    Catalog:
+      type: object
+      required: [materials, recipes, references, aiMode]
+      properties:
+        aiMode: { type: string, enum: [auto, claude, demo], description: 鑑定器の動作モード }
+        materials:
+          type: array
+          items:
+            type: object
+            required: [key, name, category]
+            properties:
+              key: { type: string }
+              name: { type: string }
+              category: { $ref: "#/components/schemas/Category" }
+        recipes:
+          type: array
+          items:
+            type: object
+            required: [key, name, needs]
+            properties:
+              key: { type: string }
+              name: { type: string }
+              needs: { type: string }
+        references:
+          type: array
+          items:
+            type: object
+            required: [key, name]
+            properties:
+              key: { type: string }
+              name: { type: string }
+    InquiryCreate:
+      type: object
+      required: [requestId, name, kind, message]
+      properties:
+        requestId: { type: string }
+        name: { type: string, maxLength: 40 }
+        kind: { type: string, enum: [purchase, question] }
+        message: { type: string, maxLength: 500 }
+    Inquiry:
+      type: object
+      required: [id, listingId, name, kind, message, createdAt]
+      properties:
+        id: { type: string }
+        listingId: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [purchase, question] }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kozai-relay",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/build.ts", "--serve"],
+      "port": 8787
+    }
+  ]
+}

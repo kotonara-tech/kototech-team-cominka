@@ -1,0 +1,9 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+eval/
+dist/
+.claude/skills/
+.claude/settings.local.json

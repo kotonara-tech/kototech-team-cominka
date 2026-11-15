@@ -1,0 +1,14 @@
+{
+  "src": "src",
+  "exclude": ["**/*.test.ts", "**/*.d.ts"],
+  "maxFileLines": 600,
+  "maxFunctionLines": 150,
+  "layers": {
+    "src/domain/**": { "forbid": ["@anthropic-ai/sdk", "node:*", "src/application/**", "src/infrastructure/**", "src/interface/**"] },
+    "src/application/**": { "forbid": ["@anthropic-ai/sdk", "src/infrastructure/**", "src/interface/**"] },
+    "src/infrastructure/**": { "forbid": ["src/interface/**"] }
+  },
+  "unusedExports": true,
+  "testOnlyExports": true,
+  "baseline": "code-rules.baseline.json"
+}

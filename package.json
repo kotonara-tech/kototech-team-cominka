@@ -1,0 +1,25 @@
+{
+  "name": "kozai-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "古民家の廃材を写真から鑑定して出品するハッカソン用デモ",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/build.ts --serve",
+    "build": "node scripts/build.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "eval": "node --env-file-if-exists=.env scripts/eval-photos.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
