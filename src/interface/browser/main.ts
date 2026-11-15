@@ -6,10 +6,28 @@ import { KeyedAppraiser } from "../../infrastructure/browser/keyed-appraiser.ts"
 import { handle } from "../routes.ts";
 
 const appraiser = new KeyedAppraiser();
-const { store, reset } = await openBrowserStore((e) => {
-  console.error(e);
-  alert("ブラウザへの保存に失敗した。設定画面からデモデータを初期化すると空きができる。");
+function notice(text: string) {
+  const el = document.createElement("div");
+  el.className = "notice caution app-notice";
+  el.textContent = text;
+  document.body.prepend(el);
+  return el;
+}
+
+const ui: { blocked: HTMLElement | null } = { blocked: null };
+const { store, reset } = await openBrowserStore({
+  onError(e) {
+    console.error(e);
+    alert("ブラウザへの保存に失敗した。設定画面からデモデータを初期化すると空きができる。");
+  },
+  onBlocked() {
+    ui.blocked ??= notice("古材リレーを開いている他のタブを閉じると表示される（データの形式を更新中）。");
+  },
+  onVersionChange() {
+    notice("別のタブで新しい版に更新された。このページを再読み込みする。");
+  },
 });
+ui.blocked?.remove();
 
 const deps = { store, appraiser, aiMode: () => appraiser.mode() };
 

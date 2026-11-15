@@ -15,8 +15,17 @@ function promisify<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-function open(): Promise<IDBDatabase> {
+export type IdbEvents = {
+  onError: (e: unknown) => void;
+  /** 古い版を開いている他のタブがあり、データベースの更新を待っている */
+  onBlocked: () => void;
+  /** 他のタブが新しい版に更新しようとしたため、接続を閉じた */
+  onVersionChange: () => void;
+};
+
+async function open(events: IdbEvents): Promise<IDBDatabase> {
   const req = indexedDB.open(DB_NAME, DB_VERSION);
+  req.onblocked = () => events.onBlocked();
   req.onupgradeneeded = (e) => {
     const db = req.result;
     if (e.oldVersion < 1) {
@@ -26,7 +35,13 @@ function open(): Promise<IDBDatabase> {
     }
     if (e.oldVersion < 2) db.createObjectStore("sites", { keyPath: "id" });
   };
-  return promisify(req);
+  const db = await promisify(req);
+  // 新しい版のタブが更新できるよう、この接続を閉じる
+  db.onversionchange = () => {
+    db.close();
+    events.onVersionChange();
+  };
+  return db;
 }
 
 async function readAll(db: IDBDatabase): Promise<StoreData> {
@@ -57,8 +72,8 @@ function write(db: IDBDatabase, change: Change, onError: (e: unknown) => void) {
 
 export type BrowserStore = { store: MemoryStore; reset: () => Promise<void> };
 
-export async function openBrowserStore(onError: (e: unknown) => void): Promise<BrowserStore> {
-  const db = await open();
+export async function openBrowserStore(events: IdbEvents): Promise<BrowserStore> {
+  const db = await open(events);
   const seed = seedData();
   let saved = await readAll(db);
   if (saved.listings.length === 0 && Object.keys(saved.requests).length === 0) {
@@ -69,7 +84,7 @@ export async function openBrowserStore(onError: (e: unknown) => void): Promise<B
     saved = { ...saved, listings: seed.listings };
   }
   // サンプルの現場はコードの定数、追加した現場は IndexedDB から読む
-  const store = new MemoryStore({ ...saved, sites: [...seed.sites, ...saved.sites] }, (change) => write(db, change, onError));
+  const store = new MemoryStore({ ...saved, sites: [...seed.sites, ...saved.sites] }, (change) => write(db, change, events.onError));
   return { store, reset: () => reset(db) };
 }
 
