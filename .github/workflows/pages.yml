@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - run: cd kozai
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
